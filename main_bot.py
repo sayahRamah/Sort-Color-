@@ -2,7 +2,6 @@
 # main_bot.py (الكود المعدل بالكامل)
 # =================================================================
 import telegram
-# *** التعديل هنا: تم نقل CallbackContext إلى telegram.ext ***
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup 
 from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext 
 from telegram.ext import filters 
@@ -202,7 +201,8 @@ def main():
         print("🚨 خطأ: لم يتم العثور على توكن البوت. يجب تعيين متغير البيئة 'TOKEN'.")
         return
 
-    updater = Updater(TOKEN, use_context=True)
+    # *** التعديل هنا: حذف use_context=True ***
+    updater = Updater(TOKEN) 
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))

@@ -2,8 +2,9 @@
 # main_bot.py (الكود المعدل بالكامل)
 # =================================================================
 import telegram
-# *** التعديل هنا: استيراد 'filters' بشكل منفصل ***
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext
+# *** التعديل هنا: استيراد الكلاسات الأساسية مباشرة من telegram ***
+from telegram import Update, CallbackContext, InlineKeyboardButton, InlineKeyboardMarkup 
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler 
 from telegram.ext import filters 
 import os
 import time
@@ -206,10 +207,8 @@ def main():
 
     dp.add_handler(CommandHandler("start", start))
     
-    # *** التعديل هنا: استخدام filters.PHOTO ***
     dp.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     
-    # *** التعديل هنا: استخدام filters.TEXT و filters.COMMAND ***
     dp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     
     dp.add_handler(CallbackQueryHandler(button_callback))

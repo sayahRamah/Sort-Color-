@@ -1,15 +1,16 @@
 # =================================================================
-# main_bot.py (الكود المعدل بالكامل)
+# main_bot.py (الكود النهائي بعد إصلاح جميع مشاكل الاستيراد)
 # =================================================================
 import telegram
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup 
-# *** تم تغيير الاستيراد إلى Application و ApplicationBuilder ***
+# استيراد الكلاسات الأساسية و constants للماركداون
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, constants 
+# استيراد مكونات التطبيق الحديثة
 from telegram.ext import Application, ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext 
 from telegram.ext import filters 
 import os
 import time
 
-# استيراد الوظائف من الملفات الأخرى
+# استيراد الوظائف من الملفات الأخرى (تعتمد على وجودها في نفس المجلد)
 from solver import solve_puzzle, state_to_tuple 
 from image_processor import recognize_shapes_and_state 
 from visualizer import draw_puzzle_state 
@@ -21,6 +22,7 @@ from manual_entry import (
 
 MAX_CAPACITY = 4
 # -----------------
+# قراءة التوكن من متغير البيئة
 TOKEN = os.getenv('TOKEN') 
 # -----------------
 
@@ -30,7 +32,7 @@ def start(update: Update, context: CallbackContext) -> None:
         '👋 مرحباً! أنا هنا لحل ألغاز فرز الألوان (أدعم 50 لونًا!).\n\n'
         '**الخيار 1 (المُفضل):** أرسل صورة واضحة للغز.\n'
         '**الخيار 2:** إذا فشل التحليل، يمكنك التصحيح أو الإدخال اليدوي الكامل.',
-        parse_mode=telegram.ParseMode.MARKDOWN
+        parse_mode=constants.ParseMode.MARKDOWN
     )
 
 def send_solution_steps(initial_state, chat_id, context):
@@ -42,7 +44,8 @@ def send_solution_steps(initial_state, chat_id, context):
         context.bot.send_message(chat_id, "❌ لم أتمكن من إيجاد حل لهذا اللغز.")
         return
     
-    context.bot.send_message(chat_id, f"✅ تم إيجاد الحل في **{len(solution_path_with_states)} خطوة!** سأرسل لك كل خطوة الآن.", parse_mode=telegram.ParseMode.MARKDOWN)
+    context.bot.send_message(chat_id, f"✅ تم إيجاد الحل في **{len(solution_path_with_states)} خطوة!** سأرسل لك كل خطوة الآن.", 
+                             parse_mode=constants.ParseMode.MARKDOWN)
 
     initial_image_bytes = draw_puzzle_state(initial_state)
     context.bot.send_photo(chat_id, initial_image_bytes, caption="الحالة الأولية المؤكدة:")
@@ -185,11 +188,12 @@ def button_callback(update: Update, context: CallbackContext) -> None:
                 "😔 آسف للخطأ. يرجى اتباع أحد الخيارات:\n\n"
                 "**1. التصحيح المباشر:** أرسل أمر بالصيغة: `تصحيح رقم_الزجاجة:A1,B2,...` (الألوان من الأعلى إلى الأسفل).\n"
                 "**2. الإدخال الكامل:** اضغط على الزر أدناه.",
-                reply_markup=manual_markup, parse_mode=telegram.ParseMode.MARKDOWN
+                reply_markup=manual_markup, 
+                parse_mode=constants.ParseMode.MARKDOWN
             )
 
     elif data == 'manual_SHOW':
-         query.edit_message_text(get_mapping_table_text_simplified(), parse_mode=telegram.ParseMode.MARKDOWN)
+         query.edit_message_text(get_mapping_table_text_simplified(), parse_mode=constants.ParseMode.MARKDOWN)
     
     elif data == 'manual_FULL':
          context.user_data['state_status'] = 'awaiting_manual_input_full'
@@ -202,24 +206,22 @@ def main():
         print("🚨 خطأ: لم يتم العثور على توكن البوت. يجب تعيين متغير البيئة 'TOKEN'.")
         return
 
-    # *** التعديل الرئيسي: استخدام ApplicationBuilder ***
+    # استخدام ApplicationBuilder لتهيئة البوت الحديثة
     application = ApplicationBuilder().token(TOKEN).build()
 
-    # إضافة المعالجات مباشرة إلى 'application'
+    # إضافة المعالجات (Handlers)
     application.add_handler(CommandHandler("start", start))
-    
     application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
-    
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
-    
     application.add_handler(CallbackQueryHandler(button_callback))
 
     print("🤖 البوت يعمل الآن ويستمع لتيليجرام...")
     
-    # استخدام run_polling بدلاً من start_polling
+    # استخدام run_polling للتشغيل المتواصل
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
 if __name__ == '__main__':
+    # لتجنب خطأ الاستيراد الدوري
     import manual_entry
     main()

@@ -3,7 +3,8 @@
 # =================================================================
 import telegram
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup 
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext 
+# *** تم تغيير الاستيراد إلى Application و ApplicationBuilder ***
+from telegram.ext import Application, ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext 
 from telegram.ext import filters 
 import os
 import time
@@ -196,26 +197,28 @@ def button_callback(update: Update, context: CallbackContext) -> None:
 
 
 def main():
-    """الدالة الرئيسية لتشغيل البوت."""
+    """الدالة الرئيسية لتشغيل البوت باستخدام Application."""
     if not TOKEN:
         print("🚨 خطأ: لم يتم العثور على توكن البوت. يجب تعيين متغير البيئة 'TOKEN'.")
         return
 
-    # *** التعديل هنا: حذف use_context=True ***
-    updater = Updater(TOKEN) 
-    dp = updater.dispatcher
+    # *** التعديل الرئيسي: استخدام ApplicationBuilder ***
+    application = ApplicationBuilder().token(TOKEN).build()
 
-    dp.add_handler(CommandHandler("start", start))
+    # إضافة المعالجات مباشرة إلى 'application'
+    application.add_handler(CommandHandler("start", start))
     
-    dp.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    application.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     
-    dp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
     
-    dp.add_handler(CallbackQueryHandler(button_callback))
+    application.add_handler(CallbackQueryHandler(button_callback))
 
     print("🤖 البوت يعمل الآن ويستمع لتيليجرام...")
-    updater.start_polling()
-    updater.idle()
+    
+    # استخدام run_polling بدلاً من start_polling
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
+
 
 if __name__ == '__main__':
     import manual_entry

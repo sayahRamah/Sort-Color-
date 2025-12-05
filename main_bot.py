@@ -1,11 +1,14 @@
 # =================================================================
-# main_bot.py (محدث)
+# main_bot.py (الكود المعدل بالكامل)
 # =================================================================
 import telegram
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackQueryHandler, CallbackContext
+# *** التعديل هنا: استيراد 'filters' بشكل منفصل ***
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext
+from telegram.ext import filters 
 import os
 import time
+
+# استيراد الوظائف من الملفات الأخرى
 from solver import solve_puzzle, state_to_tuple 
 from image_processor import recognize_shapes_and_state 
 from visualizer import draw_puzzle_state 
@@ -202,8 +205,13 @@ def main():
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.photo, handle_photo))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_text_input))
+    
+    # *** التعديل هنا: استخدام filters.PHOTO ***
+    dp.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    
+    # *** التعديل هنا: استخدام filters.TEXT و filters.COMMAND ***
+    dp.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text_input))
+    
     dp.add_handler(CallbackQueryHandler(button_callback))
 
     print("🤖 البوت يعمل الآن ويستمع لتيليجرام...")

@@ -2,9 +2,9 @@
 # main_bot.py (الكود المعدل بالكامل)
 # =================================================================
 import telegram
-# *** التعديل هنا: استيراد الكلاسات الأساسية مباشرة من telegram ***
-from telegram import Update, CallbackContext, InlineKeyboardButton, InlineKeyboardMarkup 
-from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler 
+# *** التعديل هنا: تم نقل CallbackContext إلى telegram.ext ***
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup 
+from telegram.ext import Updater, CommandHandler, MessageHandler, CallbackQueryHandler, CallbackContext 
 from telegram.ext import filters 
 import os
 import time
@@ -218,6 +218,5 @@ def main():
     updater.idle()
 
 if __name__ == '__main__':
-    # لتجنب خطأ الاستيراد الدوري
     import manual_entry
     main()

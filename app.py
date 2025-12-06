@@ -1,28 +1,16 @@
 from flask import Flask, request, jsonify
-import logging
 import os
 import json
 
 app = Flask(__name__)
 
-# إعداد التسجيل
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
-
 @app.route('/')
-def index():
+def home():
     return jsonify({
-        "status": "running",
-        "service": "Water Sort Puzzle Bot",
-        "version": "1.0.0",
-        "endpoints": {
-            "health": "/health",
-            "webhook": "/webhook (POST)",
-            "setwebhook": "/setwebhook"
-        }
+        "status": "online",
+        "service": "Water Sort Bot",
+        "message": "التطبيق يعمل بنجاح!",
+        "endpoints": ["/health", "/webhook", "/setwebhook"]
     })
 
 @app.route('/health')
@@ -31,69 +19,46 @@ def health():
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Webhook endpoint for Telegram"""
-    try:
-        data = request.get_json()
-        logger.info(f"Received update_id: {data.get('update_id') if data else 'No data'}")
-        
-        # رد بسيط للتأكيد
-        return jsonify({"status": "received"}), 200
-    except Exception as e:
-        logger.error(f"Webhook error: {e}")
-        return jsonify({"error": str(e)}), 500
+    data = request.get_json() or {}
+    print(f"📩 Telegram webhook received: {data.get('update_id')}")
+    return jsonify({"status": "ok"})
 
 @app.route('/setwebhook', methods=['GET'])
 def set_webhook():
-    """Set webhook manually"""
+    token = os.environ.get('TELEGRAM_TOKEN')
+    if not token:
+        return "❌ TELEGRAM_TOKEN not set", 400
+    
+    import requests
+    webhook_url = f"https://{request.host}/webhook"
+    
     try:
-        token = os.environ.get('TELEGRAM_TOKEN')
-        if not token:
-            return "TELEGRAM_TOKEN not set", 400
-        
-        # الحصول على رابط التطبيق
-        import requests
-        webhook_url = f"https://{request.host}/webhook"
-        
-        response = requests.post(
+        response = requests.get(
             f"https://api.telegram.org/bot{token}/setWebhook",
-            json={"url": webhook_url}
+            params={"url": webhook_url}
         )
-        
-        result = {
-            "webhook_url": webhook_url,
-            "telegram_response": response.json() if response.text else response.text,
-            "status_code": response.status_code
-        }
-        
-        return jsonify(result), 200
+        return f"""
+        <h1>✅ Webhook Set Successfully</h1>
+        <p>URL: {webhook_url}</p>
+        <p>Response: {response.text}</p>
+        <a href="/">Back to Home</a>
+        """
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return f"❌ Error: {str(e)}", 500
 
 @app.route('/test')
 def test():
-    """Test endpoint to verify imports"""
     try:
-        # اختبار جميع الاستيرادات
-        import cv2
-        import numpy as np
+        # اختبار الاستيرادات الأساسية
         from PIL import Image
-        import telegram
-        import flask
-        
         return jsonify({
-            "status": "success",
-            "imports": {
-                "opencv": cv2.__version__,
-                "numpy": np.__version__,
-                "pillow": Image.__version__,
-                "telegram": "OK",
-                "flask": "OK"
-            }
-        }), 200
+            "Pillow": "✅ OK",
+            "Flask": "✅ OK",
+            "version": "1.0"
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"Starting server on port {port}")
-    app.run(host='0.0.0.0', port=port)
+    app.run(host='0.0.0.0', port=port, debug=False)

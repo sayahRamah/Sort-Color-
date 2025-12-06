@@ -1,163 +1,72 @@
 from flask import Flask, request, jsonify
 import os
 import logging
-import json
-from collections import deque
+from datetime import datetime
+import pytz
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+ADMIN_USER_ID = os.environ.get('ADMIN_USER_ID', '5730502448')
 
-# تخزين الجلسات
+# تخزين بسيط
+user_stats = {}
 user_sessions = {}
 
-# نظام الألوان الكامل
-COLOR_SYSTEM = {
-    # الأحمر بثلاث درجات
-    'R1': '🔴',      # فاتح
-    'R2': '🔴🔴',    # متوسط
-    'R3': '🔴🔴🔴',  # غامق
+def send_to_admin(message):
+    """إرسال رسالة للمالك"""
+    if not TELEGRAM_TOKEN or not ADMIN_USER_ID:
+        return
     
-    # الأزرق بثلاث درجات
-    'B1': '🔵',
-    'B2': '🔵🔵',
-    'B3': '🔵🔵🔵',
-    
-    # الأخضر بثلاث درجات
-    'G1': '🟢',
-    'G2': '🟢🟢',
-    'G3': '🟢🟢🟢',
-    
-    # الأصفر بثلاث درجات
-    'Y1': '🟡',
-    'Y2': '🟡🟡',
-    'Y3': '🟡🟡🟡',
-    
-    # البنفسجي بثلاث درجات
-    'P1': '🟣',
-    'P2': '🟣🟣',
-    'P3': '🟣🟣🟣',
-    
-    # البرتقالي بثلاث درجات
-    'O1': '🟠',
-    'O2': '🟠🟠',
-    'O3': '🟠🟠🟠',
-    
-    # ألوان إضافية
-    'BLACK': '⚫',
-    'WHITE': '⚪',
-    'BROWN': '🟤',
-    
-    # خاص
-    'EMPTY': '⬜',
-    'UNKNOWN': '❓'
-}
+    try:
+        import requests
+        url = f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage'
+        data = {
+            'chat_id': ADMIN_USER_ID,
+            'text': message,
+            'parse_mode': 'Markdown'
+        }
+        requests.post(url, json=data, timeout=5)
+    except:
+        pass
 
-# تحويل عكسي
-EMOJI_TO_CODE = {v: k for k, v in COLOR_SYSTEM.items()}
-
-class PuzzleSolver:
-    """حل اللغز مع علامات استفهام"""
+def track_user_start(user_id, username, first_name):
+    """تتبع بدء مستخدم جديد"""
+    now = datetime.now(pytz.UTC)
+    user_key = str(user_id)
     
-    def __init__(self, bottles):
-        self.bottles = bottles
-        self.num_bottles = len(bottles)
-        self.capacity = 4
-    
-    def is_solved(self):
-        """التحقق إذا كان اللغز محلولاً"""
-        for bottle in self.bottles:
-            colors = [c for c in bottle if c != 'EMPTY' and c != 'UNKNOWN']
-            if colors and len(set(colors)) > 1:
-                return False
-        return True
-    
-    def can_pour(self, from_idx, to_idx):
-        """التحقق من إمكانية الصب"""
-        if from_idx == to_idx:
-            return False
+    if user_key not in user_stats:
+        user_stats[user_key] = {
+            'user_id': user_id,
+            'username': username,
+            'first_name': first_name,
+            'first_seen': now.isoformat(),
+            'start_count': 1
+        }
         
-        from_bottle = self.bottles[from_idx]
-        to_bottle = self.bottles[to_idx]
-        
-        # العثور على أول لون غير فارغ وغير مجهول
-        source_color = None
-        for color in from_bottle:
-            if color != 'EMPTY' and color != 'UNKNOWN':
-                source_color = color
-                break
-        
-        if not source_color:
-            return False
-        
-        # التحقق من السعة في الزجاجة الهدف
-        empty_count = sum(1 for c in to_bottle if c == 'EMPTY')
-        if empty_count == 0:
-            return False
-        
-        # العثور على لون الزجاجة الهدف
-        target_color = None
-        for color in to_bottle:
-            if color != 'EMPTY' and color != 'UNKNOWN':
-                target_color = color
-                break
-        
-        # يمكن الصب إذا كانت فارغة أو نفس اللون
-        return target_color is None or target_color == source_color
-    
-    def solve(self):
-        """BFS للعثور على الحل"""
-        if self.is_solved():
-            return []
-        
-        initial_state = tuple(tuple(b) for b in self.bottles)
-        queue = deque([(self.bottles, [])])
-        visited = {initial_state}
-        
-        while queue:
-            current_state, path = queue.popleft()
-            
-            solver = PuzzleSolver([list(b) for b in current_state])
-            if solver.is_solved():
-                return path
-            
-            # توليد الحركات الممكنة
-            for from_idx in range(solver.num_bottles):
-                for to_idx in range(solver.num_bottles):
-                    if solver.can_pour(from_idx, to_idx):
-                        new_state = [list(b) for b in current_state]
-                        
-                        # تنفيذ الصب
-                        source_color = None
-                        for i in range(solver.capacity):
-                            if new_state[from_idx][i] != 'EMPTY' and new_state[from_idx][i] != 'UNKNOWN':
-                                source_color = new_state[from_idx][i]
-                                new_state[from_idx][i] = 'EMPTY'
-                                break
-                        
-                        # إضافة إلى الهدف
-                        for i in range(solver.capacity-1, -1, -1):
-                            if new_state[to_idx][i] == 'EMPTY':
-                                new_state[to_idx][i] = source_color
-                                break
-                        
-                        state_tuple = tuple(tuple(b) for b in new_state)
-                        if state_tuple not in visited:
-                            visited.add(state_tuple)
-                            queue.append((state_tuple, path + [(from_idx, to_idx)]))
-        
-        return []
+        # إرسال إشعار للمالك
+        time_str = now.strftime("%Y-%m-%d %H:%M:%S UTC")
+        admin_msg = f"""
+👤 *مستخدم جديد*
+🆔: `{user_id}`
+👤: {first_name}
+📛: @{username if username else 'N/A'}
+🕐: {time_str}
+📊: إجمالي المستخدمين: {len(user_stats)}
+        """
+        send_to_admin(admin_msg)
+    else:
+        user_stats[user_key]['start_count'] += 1
 
 @app.route('/')
 def home():
     return """
-    <div style="text-align:center;padding:50px;font-family:Arial">
-        <h1>🧪 بوت حل لغز فرز الألوان المتطور</h1>
-        <p>🎨 <strong>نظام الدرجات اللونية + علامات استفهام</strong></p>
-        <p>✅ يعمل 100% - بدون مشاكل صور</p>
-        <p>📱 افتح تلجرام وأرسل <code>/start</code></p>
+    <div style="text-align:center;padding:50px">
+        <h1>🤖 Water Sort Bot</h1>
+        <p>✅ يعمل | 📊 المتتبعين: """ + str(len(user_stats)) + """</p>
+        <p>👑 المالك: @Messilorian</p>
     </div>
     """
 
@@ -170,234 +79,58 @@ def webhook():
     
     data = request.get_json()
     if not data or 'message' not in data:
-        return jsonify({"status": "no message"})
+        return jsonify({"status": "no data"})
     
     message = data['message']
     chat_id = str(message['chat']['id'])
+    user_id = message['from']['id']
+    username = message['from'].get('username', '')
+    first_name = message['from'].get('first_name', '')
     text = message.get('text', '').strip()
     
-    def send_message(text, keyboard=None):
-        message_data = {
-            'chat_id': chat_id,
-            'text': text,
-            'parse_mode': 'Markdown'
-        }
-        if keyboard:
-            message_data['reply_markup'] = keyboard
-        
+    def send_msg(text_content):
         requests.post(
             f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
-            json=message_data
+            json={'chat_id': chat_id, 'text': text_content, 'parse_mode': 'Markdown'}
         )
     
-    def show_color_guide():
-        guide = """
-🎨 *دليل الألوان المتاح:*
-
-🔴 *الدرجات الحمراء:*
-🔴   - أحمر فاتح
-🔴🔴 - أحمر متوسط  
-🔴🔴🔴 - أحمر غامق
-
-🔵 *الدرجات الزرقاء:*
-🔵   - أزرق فاتح
-🔵🔵 - أزرق متوسط
-🔵🔵🔵 - أزرق غامق
-
-🟢 *الدرجات الخضراء:*
-🟢   - أخضر فاتح
-🟢🟢 - أخضر متوسط
-🟢🟢🟢 - أخضر غامق
-
-🎭 *ألوان أخرى:*
-🟡 🟣 🟠 ⚫ ⚪ 🟤
-
-⬜ *فارغ:* ⬜
-❓ *غير معروف:* ❓
-
-📝 *مثال:* `🔴,🔴🔴,❓,⬜`
-        """
-        send_message(guide)
-    
-    # تهيئة الجلسة
-    if chat_id not in user_sessions:
-        user_sessions[chat_id] = {
-            'step': 0,
-            'bottles': [],
-            'total_bottles': 0,
-            'solution': None
-        }
-    
-    session = user_sessions[chat_id]
-    
-    # معالجة الأوامر
     if text == '/start':
-        session.update({
-            'step': 1,
-            'bottles': [],
-            'total_bottles': 0,
-            'solution': None
-        })
+        # تتبع المستخدم
+        track_user_start(user_id, username, first_name)
         
-        welcome = """
-🧩 *مرحباً بكم في بوت حل لغز الألوان المتطور!*
-
-✨ *المميزات الجديدة:*
-✅ ثلاث درجات لكل لون
-✅ علامات استفهام للألوان المخفية
-✅ نظام حل ذكي مع ❓
-
-📚 *دليل الألوان:* أرسل `/colors`
-❓ *المساعدة:* أرسل `/help`
-
-🔢 *الآن، كم عدد الزجاجات؟ (5-20)*
+        # لوحة اختيار اللغة المبسطة
+        keyboard = {
+            'inline_keyboard': [
+                [{'text': '🇸🇦 العربية', 'callback_data': 'lang_ar'}],
+                [{'text': '🇺🇸 English', 'callback_data': 'lang_en'}],
+                [{'text': 'بدون ألوان - تجريبي', 'callback_data': 'lang_simple'}]
+            ]
+        }
+        
+        welcome = "🌍 اختر اللغة / Choose language"
+        requests.post(
+            f'https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage',
+            json={
+                'chat_id': chat_id,
+                'text': welcome,
+                'reply_markup': keyboard
+            }
+        )
+    
+    elif text == '/stats' and str(user_id) == ADMIN_USER_ID:
+        stats_msg = f"""
+📊 *الإحصائيات*
+👥 المستخدمون: {len(user_stats)}
+🕐 آخر تحديث: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
         """
-        send_message(welcome)
+        send_msg(stats_msg)
     
-    elif text == '/colors':
-        show_color_guide()
-    
-    elif text == '/help':
-        help_text = """
-🆘 *مساعدة سريعة:*
-
-🎮 *كيفية اللعب:*
-1. أدخل عدد الزجاجات
-2. أدخل كل زجاجة (4 خانات)
-3. استخدم ❓ للون غير المعروف
-
-📝 *التنسيق:*
-`لون,لون,لون,لون`
-مثال: `🔴,🔴🔴,❓,⬜`
-
-🎨 *عرض الألوان:* `/colors`
-🔄 *بدء جديد:* `/start`
-        """
-        send_message(help_text)
-    
-    elif session['step'] == 1:  # انتظار عدد الزجاجات
-        try:
-            num = int(text)
-            if 5 <= num <= 20:
-                session['total_bottles'] = num
-                session['step'] = 2
-                session['current_bottle'] = 1
-                
-                # عرض لوحة الألوان
-                show_color_guide()
-                send_message(f"\n✅ تم تحديد *{num} زجاجة*\n\n*الزجاجة 1:*\nأدخل 4 خانات (مثال: `🔴,🔴🔴,❓,⬜`)")
-            else:
-                send_message("❌ الرجاء إدخال رقم بين *5 و 20*")
-        except:
-            send_message("❌ الرجاء إدخال *رقم صحيح*")
-    
-    elif session['step'] == 2:  # استقبال الزجاجات
-        try:
-            # تقسيم المدخلات
-            parts = [p.strip() for p in text.split(',')]
-            if len(parts) != 4:
-                send_message("❌ يجب إدخال *4 عناصر* مفصولة بفواصل\nمثال: `🔴,🔴🔴,❓,⬜`")
-                return jsonify({"status": "invalid"})
-            
-            # تحقق من صحة الألوان
-            valid_colors = list(COLOR_SYSTEM.values()) + ['?', '؟', '_']
-            converted = []
-            
-            for part in parts:
-                if part in ['?', '؟']:
-                    converted.append('UNKNOWN')
-                elif part in ['_', '⬜', 'EMPTY']:
-                    converted.append('EMPTY')
-                elif part in valid_colors:
-                    # البحث عن الكود المناسب
-                    for code, emoji in COLOR_SYSTEM.items():
-                        if emoji == part:
-                            converted.append(code)
-                            break
-                    else:
-                        converted.append('UNKNOWN')
-                else:
-                    send_message(f"❌ لون غير معروف: `{part}`\nاستخدم `/colors` لعرض الألوان المتاحة")
-                    return jsonify({"status": "invalid"})
-            
-            # حفظ الزجاجة
-            session['bottles'].append(converted)
-            
-            if len(session['bottles']) < session['total_bottles']:
-                next_num = len(session['bottles']) + 1
-                send_message(f"✅ تم حفظ الزجاجة *{len(session['bottles'])}*\n\n*الزجاجة {next_num}:*")
-            else:
-                # تم جمع جميع الزجاجات
-                session['step'] = 3
-                
-                # عرض الملخص
-                summary = "📊 *ملخص اللغز:*\n\n"
-                for i, bottle in enumerate(session['bottles'], 1):
-                    emoji_bottle = [COLOR_SYSTEM.get(c, '❓') for c in bottle]
-                    summary += f"{i}. {' | '.join(emoji_bottle)}\n"
-                
-                summary += "\n🔍 *جاري البحث عن الحل...* ⏳"
-                send_message(summary)
-                
-                # محاولة الحل
-                try:
-                    solver = PuzzleSolver(session['bottles'])
-                    solution = solver.solve()
-                    
-                    if solution:
-                        session['solution'] = solution
-                        
-                        # تحويل الحل إلى خطوات مفهومة
-                        steps = []
-                        for step_num, (from_idx, to_idx) in enumerate(solution, 1):
-                            from_bottle = session['bottles'][from_idx]
-                            to_bottle = session['bottles'][to_idx]
-                            
-                            # العثور على اللون المراد صبه
-                            color = None
-                            for c in from_bottle:
-                                if c != 'EMPTY' and c != 'UNKNOWN':
-                                    color = COLOR_SYSTEM.get(c, '❓')
-                                    break
-                            
-                            steps.append(f"{step_num}. صب {color} من #{from_idx+1} → #{to_idx+1}")
-                        
-                        # إرسال الحل
-                        solution_text = f"""
-🎉 *تم إيجاد حل!*
-
-⏱️ *عدد الخطوات:* {len(solution)}
-
-📋 *الخطوات:*
-{chr(10).join(steps[:10])}
-                        """
-                        
-                        if len(solution) > 10:
-                            solution_text += f"\n📄 *وهناك {len(solution)-10} خطوات إضافية*"
-                        
-                        solution_text += "\n\n🔄 *لعبة جديدة:* `/start`"
-                        
-                        send_message(solution_text)
-                    else:
-                        send_message("❌ *لم أتمكن من إيجاد حل* لهذا اللغز.\nتحقق من المدخلات وحاول مرة أخرى.")
-                
-                except Exception as e:
-                    logger.error(f"Error solving: {e}")
-                    send_message("⚠️ حدث خطأ أثناء البحث عن الحل. جرب إدخال اللغز مرة أخرى.")
-                
-        except Exception as e:
-            logger.error(f"Error processing bottle: {e}")
-            send_message("❌ حدث خطأ. تأكد من التنسيق:\n`🔴,🔴🔴,❓,⬜`")
-    
-    else:
-        send_message("💡 أرسل `/start` للبدء أو `/help` للمساعدة")
-    
-    return jsonify({"status": "processed"})
+    return jsonify({"status": "ok"})
 
 @app.route('/setwebhook')
 def set_webhook():
     if not TELEGRAM_TOKEN:
-        return "TELEGRAM_TOKEN not set", 400
+        return "❌ TELEGRAM_TOKEN غير مضبوط", 400
     
     import requests
     webhook_url = f"https://{request.host}/webhook"
@@ -411,18 +144,40 @@ def set_webhook():
     except Exception as e:
         return f"❌ Error: {e}", 500
 
-@app.route('/colors_demo')
-def colors_demo():
-    """عرض جميع الألوان"""
-    html = "<h1>🎨 نظام الألوان</h1><div style='font-size: 24px; line-height: 2;'>"
+@app.route('/admin')
+def admin_page():
+    """صفحة إدارة مبسطة"""
+    html = f"""
+    <html>
+    <head><title>🤖 إدارة البوت</title></head>
+    <body style="font-family: Arial; padding: 20px;">
+        <h1>إحصائيات البوت</h1>
+        <p>👥 إجمالي المستخدمين: {len(user_stats)}</p>
+        <h3>آخر 5 مستخدمين:</h3>
+    """
     
-    for code, emoji in COLOR_SYSTEM.items():
-        html += f"<div>{emoji} → {code}</div>"
+    users = list(user_stats.values())[-5:]
+    for user in reversed(users):
+        time = datetime.fromisoformat(user['first_seen'].replace('Z', '+00:00'))
+        html += f"""
+        <div style="border:1px solid #ccc; padding:10px; margin:5px;">
+            👤 {user['first_name']} 
+            <small>(@{user.get('username', 'N/A')})</small><br>
+            🆔: {user['user_id']} | 🕐: {time.strftime('%Y-%m-%d %H:%M')}
+        </div>
+        """
     
-    html += "</div>"
+    html += """
+        <br>
+        <a href="/">🏠 الرئيسية</a> | 
+        <a href="/setwebhook">🔗 تعيين Webhook</a>
+    </body>
+    </html>
+    """
     return html
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"🚀 Starting Advanced Water Sort Bot on port {port}")
+    logger.info(f"🚀 Starting bot on port {port}")
+    logger.info(f"👑 Admin: {ADMIN_USER_ID}")
     app.run(host='0.0.0.0', port=port)

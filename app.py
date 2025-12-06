@@ -17,52 +17,44 @@ def home():
                 font-family: Arial, sans-serif;
                 text-align: center;
                 padding: 50px;
-                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                color: white;
+                background: #f0f0f0;
             }
             .container {
-                background: rgba(255, 255, 255, 0.95);
-                color: #333;
-                padding: 40px;
-                border-radius: 20px;
-                box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+                background: white;
+                padding: 30px;
+                border-radius: 10px;
+                box-shadow: 0 0 10px rgba(0,0,0,0.1);
                 max-width: 800px;
                 margin: 0 auto;
             }
-            h1 { color: #667eea; }
+            h1 { color: #333; }
             .btn {
                 display: inline-block;
                 background: #4CAF50;
                 color: white;
-                padding: 12px 24px;
+                padding: 10px 20px;
                 margin: 10px;
                 border-radius: 5px;
                 text-decoration: none;
-                font-weight: bold;
             }
-            .error { color: red; }
-            .success { color: green; }
         </style>
     </head>
     <body>
         <div class="container">
             <h1>🤖 بوت حل لغز فرز الألوان</h1>
-            <p class="success">✅ التطبيق يعمل بنجاح!</p>
-            <p>ارسل /start في تلجرام للبدء.</p>
+            <p style="color: green; font-weight: bold;">✅ التطبيق يعمل بنجاح!</p>
+            <p>المرحلة 1: التطبيق الأساسي يعمل</p>
+            <p>المرحلة 2: معالجة الصور (قريباً)</p>
             
-            <div style="margin: 30px 0;">
+            <div style="margin: 20px 0;">
                 <a href="/setwebhook" class="btn">🎯 تعيين Webhook</a>
                 <a href="/health" class="btn">🩺 فحص الصحة</a>
                 <a href="/test" class="btn">🧪 اختبار المكتبات</a>
             </div>
             
-            <div style="text-align: left; background: #f8f9fa; padding: 20px; border-radius: 10px;">
-                <h3>📊 حالة الخدمة:</h3>
-                <ul>
-                    <li>✅ Flask: جاهز</li>
-                    <li>✅ Gunicorn: يعمل</li>
-                    <li>📡 Webhook: <a href="/setwebhook">تحقق الآن</a></li>
-                </ul>
+            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px;">
+                <p><strong>الإصدار:</strong> 1.0.0 (بدون معالجة صور)</p>
+                <p><strong>الحالة:</strong> جاهز لاستقبال رسائل تلجرام</p>
             </div>
         </div>
     </body>
@@ -74,111 +66,125 @@ def health():
     return jsonify({
         "status": "healthy",
         "service": "water-sort-bot",
-        "python_version": sys.version.split()[0]
+        "stage": "1 - الأساسيات"
     })
 
 @app.route('/test')
 def test():
     """اختبار المكتبات المثبتة"""
-    results = {
-        "flask": "✅",
-        "gunicorn": "✅",
-        "python": sys.version.split()[0]
-    }
+    results = {}
     
-    # اختبار requests
+    try:
+        import flask
+        results["flask"] = "✅"
+    except:
+        results["flask"] = "❌"
+    
     try:
         import requests
         results["requests"] = "✅"
-    except ImportError:
-        results["requests"] = "❌ غير مثبت"
+    except:
+        results["requests"] = "❌"
     
-    # اختبار Pillow
-    try:
-        from PIL import Image
-        results["pillow"] = "✅"
-    except ImportError:
-        results["pillow"] = "❌ غير مثبت"
-    
-    # اختبار python-telegram-bot
     try:
         import telegram
         results["telegram_bot"] = "✅"
-    except ImportError:
-        results["telegram_bot"] = "❌ غير مثبت"
+    except:
+        results["telegram_bot"] = "❌"
+    
+    results["python"] = sys.version.split()[0]
     
     return jsonify(results)
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
-    """Webhook endpoint for Telegram"""
-    data = request.get_json() or {}
-    print(f"📩 Telegram webhook received: {data.get('update_id', 'No ID')}")
-    return jsonify({"status": "received", "update_id": data.get('update_id')})
+    """Webhook endpoint"""
+    try:
+        data = request.get_json() or {}
+        
+        # معالجة بسيطة للرسائل
+        if 'message' in data:
+            message = data['message']
+            chat_id = message['chat']['id']
+            text = message.get('text', '')
+            
+            # هنا يمكنك إضافة ردود البوت
+            # سنضيفها لاحقاً عندما يعمل البوت
+            
+        return jsonify({"status": "received"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/setwebhook')
 def set_webhook():
-    """تعيين webhook لتلجرام"""
+    """تعيين webhook"""
     token = os.environ.get('TELEGRAM_TOKEN')
     
     if not token:
         return """
-        <div style="text-align: center; padding: 50px;">
-            <h2 style="color: red;">❌ TELEGRAM_TOKEN غير مضبوط</h2>
-            <p>الرجاء إضافة متغير البيئة في Render:</p>
-            <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">
-                TELEGRAM_TOKEN = توكن_البوت_الخاص_بك
-            </p>
-            <a href="/" style="color: blue;">← العودة للصفحة الرئيسية</a>
+        <div style="text-align:center;padding:50px">
+            <h2>❌ TELEGRAM_TOKEN غير مضبوط</h2>
+            <p>أضف هذا المتغير في Render:</p>
+            <code>TELEGRAM_TOKEN = توكن_البوت</code>
+            <p><a href="/">العودة</a></p>
         </div>
         """, 400
     
     try:
         import requests
-    except ImportError:
-        return """
-        <div style="text-align: center; padding: 50px;">
-            <h2 style="color: red;">❌ مكتبة requests غير مثبتة</h2>
-            <p>الرجاء تحديث requirements.txt لإضافة:</p>
-            <p style="background: #f0f0f0; padding: 10px; border-radius: 5px;">
-                requests==2.31.0
-            </p>
-            <a href="/test" style="color: blue;">← اختبار المكتبات</a>
-        </div>
-        """, 500
-    
-    webhook_url = f"https://{request.host}/webhook"
-    
-    try:
+        webhook_url = f"https://{request.host}/webhook"
+        
         response = requests.get(
             f"https://api.telegram.org/bot{token}/setWebhook",
             params={"url": webhook_url}
         )
         
-        result = response.json() if response.text else {"text": response.text}
-        
-        return f"""
-        <div style="text-align: center; padding: 50px;">
-            <h1 style="color: green;">✅ تم تعيين Webhook</h1>
-            <p><strong>الرابط:</strong> {webhook_url}</p>
-            <p><strong>رد تلجرام:</strong> {result}</p>
-            <div style="margin-top: 30px;">
-                <a href="/" class="btn">🏠 الرئيسية</a>
-                <a href="/test" class="btn">🧪 اختبار المكتبات</a>
+        if response.status_code == 200:
+            return f"""
+            <div style="text-align:center;padding:50px">
+                <h2 style="color:green">✅ تم تعيين Webhook</h2>
+                <p><strong>الرابط:</strong> {webhook_url}</p>
+                <p><strong>الرد:</strong> {response.text}</p>
+                <p><a href="/">العودة</a></p>
             </div>
+            """
+        else:
+            return f"""
+            <div style="text-align:center;padding:50px">
+                <h2 style="color:orange">⚠️ مشكلة في تعيين Webhook</h2>
+                <p>رمز الخطأ: {response.status_code}</p>
+                <p>الرد: {response.text}</p>
+                <p><a href="/">العودة</a></p>
+            </div>
+            """
+            
+    except ImportError:
+        return """
+        <div style="text-align:center;padding:50px">
+            <h2>❌ مكتبة requests غير مثبتة</h2>
+            <p>تأكد من وجودها في requirements.txt</p>
+            <p><a href="/test">اختبار المكتبات</a></p>
         </div>
-        """
+        """, 500
     except Exception as e:
         return f"""
-        <div style="text-align: center; padding: 50px;">
-            <h1 style="color: red;">❌ خطأ في تعيين Webhook</h1>
+        <div style="text-align:center;padding:50px">
+            <h2>❌ خطأ</h2>
             <p>{str(e)}</p>
-            <a href="/" class="btn">← العودة</a>
+            <p><a href="/">العودة</a></p>
         </div>
         """, 500
 
+@app.route('/start', methods=['GET', 'POST'])
+def start_bot():
+    """محاكاة رد البوت على /start"""
+    return jsonify({
+        "message": "🎮 مرحباً! أنا بوت حل لغز فرز الألوان.",
+        "instructions": "أرسل لي صورة للغز وسأحله لك.",
+        "note": "ميزة معالجة الصور قريباً..."
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print(f"🚀 Starting Water Sort Bot on port {port}")
-    print(f"🐍 Python version: {sys.version}")
+    print(f"🚀 Starting server on port {port}")
     app.run(host='0.0.0.0', port=port)

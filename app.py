@@ -2,6 +2,8 @@ from flask import Flask, request, jsonify
 import os
 import sys
 import logging
+import tempfile
+import uuid
 
 app = Flask(__name__)
 
@@ -10,6 +12,12 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = os.environ.get('TELEGRAM_TOKEN')
+
+# إنشاء مجلد temp إذا لم يكن موجوداً
+TEMP_DIR = 'temp'
+if not os.path.exists(TEMP_DIR):
+    os.makedirs(TEMP_DIR)
+    logger.info(f"📁 Created temp directory: {TEMP_DIR}")
 
 @app.route('/')
 def home():
@@ -49,6 +57,13 @@ def home():
             .token-status {{ font-weight: bold; }}
             .success {{ color: green; }}
             .error {{ color: red; }}
+            .info-box {{
+                background: #f8f9fa;
+                padding: 15px;
+                border-radius: 5px;
+                text-align: left;
+                margin: 20px 0;
+            }}
         </style>
     </head>
     <body>
@@ -61,6 +76,7 @@ def home():
             </div>
             
             <p class="success">✅ التطبيق يعمل بنجاح!</p>
+            <p>📸 <strong>ميزة جديدة:</strong> البوت يستقبل الصور الآن!</p>
             
             <div style="margin: 20px 0;">
                 <a href="/setwebhook" class="btn">🎯 تعيين Webhook</a>
@@ -68,12 +84,22 @@ def home():
                 <a href="/test" class="btn">🧪 اختبار المكتبات</a>
             </div>
             
-            <div style="background: #f8f9fa; padding: 15px; border-radius: 5px; text-align: left;">
-                <h3>📋 خطوات التشغيل:</h3>
+            <div class="info-box">
+                <h3>📋 حالة البوت:</h3>
+                <ul>
+                    <li>✅ يستقبل /start ويرد</li>
+                    <li>✅ يستقبل الصور ويحفظها</li>
+                    <li>⏳ جاري تطوير تحليل الصور</li>
+                </ul>
+            </div>
+            
+            <div class="info-box">
+                <h3>🚀 كيفية الاختبار:</h3>
                 <ol>
-                    <li>إضافة TELEGRAM_TOKEN في Render Environment</li>
-                    <li>فتح /setwebhook لتعيين Webhook</li>
-                    <li>فتح البوت في تلجرام وإرسال /start</li>
+                    <li>افتح البوت في تلجرام</li>
+                    <li>أرسل /start</li>
+                    <li>أرسل صورة للغز</li>
+                    <li>سيتلقى البوت الصورة ويخزنها</li>
                 </ol>
             </div>
         </div>
@@ -86,34 +112,130 @@ def health():
     return jsonify({
         "status": "healthy" if TELEGRAM_TOKEN else "missing_token",
         "has_token": bool(TELEGRAM_TOKEN),
-        "service": "water-sort-bot"
+        "service": "water-sort-bot",
+        "features": {
+            "receive_photos": True,
+            "process_photos": "in_progress",
+            "solve_puzzle": "coming_soon"
+        }
     })
 
 @app.route('/test')
 def test():
-    """اختبار المكتبات"""
-    import json
+    """اختبار المكتبات المثبتة"""
     results = {
         "flask": "✅",
-        "requests": "❌",
-        "telegram_bot": "❌",
         "python": sys.version.split()[0],
         "has_token": bool(TELEGRAM_TOKEN)
     }
     
+    # اختبار requests
     try:
         import requests
         results["requests"] = "✅"
-    except:
-        pass
+        results["requests_version"] = requests.__version__
+    except ImportError as e:
+        results["requests"] = f"❌ {str(e)}"
     
+    # اختبار Pillow
+    try:
+        from PIL import Image, __version__ as pillow_version
+        results["pillow"] = f"✅ v{pillow_version}"
+        
+        # اختبار إنشاء صورة
+        test_image = Image.new('RGB', (10, 10), color='red')
+        results["pillow_test"] = "✅ يمكن إنشاء صور"
+    except ImportError as e:
+        results["pillow"] = f"❌ {str(e)}"
+        results["pillow_test"] = "❌ فشل"
+    
+    # اختبار telegram
     try:
         import telegram
         results["telegram_bot"] = "✅"
-    except:
-        pass
+    except ImportError as e:
+        results["telegram_bot"] = f"❌ {str(e)}"
     
     return jsonify(results)
+
+def send_telegram_message(method, data):
+    """إرسال رسالة لتلجرام"""
+    if not TELEGRAM_TOKEN:
+        logger.error("Cannot send message: TELEGRAM_TOKEN not set")
+        return None
+    
+    try:
+        import requests
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/{method}"
+        response = requests.post(url, json=data, timeout=10)
+        return response.json()
+    except Exception as e:
+        logger.error(f"Error sending telegram message: {e}")
+        return None
+
+def download_telegram_photo(file_id):
+    """تحميل صورة من تلجرام"""
+    try:
+        import requests
+        
+        # الحصول على معلومات الملف
+        file_info_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/getFile"
+        file_info_response = requests.post(file_info_url, json={'file_id': file_id})
+        file_info = file_info_response.json()
+        
+        if not file_info.get('ok'):
+            logger.error(f"Failed to get file info: {file_info}")
+            return None
+        
+        file_path = file_info['result']['file_path']
+        file_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_path}"
+        
+        # تحميل الصورة
+        photo_response = requests.get(file_url, timeout=30)
+        
+        if photo_response.status_code == 200:
+            # حفظ الصورة مؤقتاً
+            filename = f"{TEMP_DIR}/{uuid.uuid4()}.jpg"
+            with open(filename, 'wb') as f:
+                f.write(photo_response.content)
+            
+            logger.info(f"📸 Photo saved: {filename} ({len(photo_response.content)} bytes)")
+            return filename
+        else:
+            logger.error(f"Failed to download photo: {photo_response.status_code}")
+            return None
+            
+    except Exception as e:
+        logger.error(f"Error downloading photo: {e}")
+        return None
+
+def analyze_image(image_path):
+    """تحليل الصورة (نسخة أولية)"""
+    try:
+        from PIL import Image
+        import os
+        
+        # فتح الصورة
+        img = Image.open(image_path)
+        
+        # معلومات أساسية
+        info = {
+            "filename": os.path.basename(image_path),
+            "size": os.path.getsize(image_path),
+            "dimensions": img.size,
+            "format": img.format,
+            "mode": img.mode,
+            "analysis": "جاري تطوير التحليل المتقدم..."
+        }
+        
+        # إغلاق الصورة
+        img.close()
+        
+        return {"success": True, "info": info}
+        
+    except Exception as e:
+        logger.error(f"Error analyzing image: {e}")
+        return {"success": False, "error": str(e)}
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -124,7 +246,7 @@ def webhook():
     
     try:
         data = request.get_json()
-        logger.info(f"📩 Received: {data}")
+        logger.info(f"📩 Received update_id: {data.get('update_id')}")
         
         if not data:
             return jsonify({"status": "no data"})
@@ -139,7 +261,19 @@ def webhook():
             if text == '/start':
                 reply = {
                     'chat_id': chat_id,
-                    'text': "🎮 *مرحباً بك في بوت حل لغز فرز الألوان!*\n\nأرسل لي صورة للغز (سكرين شوت) وسأحله لك.\n\n📸 *كيفية الاستخدام:*\n1. التقط صورة للغز\n2. أرسلها للبوت\n3. انتظر الحل",
+                    'text': """🎮 *مرحباً بك في بوت حل لغز فرز الألوان!*
+
+📸 *كيفية الاستخدام:*
+1. التقط صورة للغز (سكرين شوت)
+2. أرسلها للبوت
+3. سأقوم بتحليلها وإيجاد الحل
+
+🔧 *الميزات المتوفرة:*
+✅ استقبال الصور
+✅ حفظ الصور مؤقتاً
+⏳ جاري تطوير تحليل الصور
+
+*أرسل لي صورة الآن!* 🎯""",
                     'parse_mode': 'Markdown'
                 }
                 send_telegram_message('sendMessage', reply)
@@ -149,10 +283,82 @@ def webhook():
             elif text:
                 reply = {
                     'chat_id': chat_id,
-                    'text': "📸 أرسل لي صورة للغز (سكرين شوت) وسأحله لك.\n\nيمكنك استخدام /start لعرض التعليمات.",
+                    'text': "📸 *أرسل لي صورة للغز (سكرين شوت) وسأحله لك.*\n\nاستخدم /start لعرض التعليمات الكاملة.",
                     'parse_mode': 'Markdown'
                 }
                 send_telegram_message('sendMessage', reply)
+            
+            # معالجة الصور
+            elif 'photo' in message:
+                logger.info(f"📸 Processing photo from chat {chat_id}")
+                
+                # إرسال رسالة "جاري المعالجة"
+                processing_msg = {
+                    'chat_id': chat_id,
+                    'text': "🔄 *جاري معالجة الصورة...*\n\nمن فضلك انتظر قليلاً ⏳",
+                    'parse_mode': 'Markdown'
+                }
+                send_telegram_message('sendMessage', processing_msg)
+                
+                # اختيار الصورة الأعلى جودة (آخر عنصر)
+                photos = message['photo']
+                best_photo = photos[-1]
+                file_id = best_photo['file_id']
+                
+                # تحميل الصورة
+                downloaded_file = download_telegram_photo(file_id)
+                
+                if downloaded_file:
+                    # تحليل الصورة
+                    analysis_result = analyze_image(downloaded_file)
+                    
+                    if analysis_result['success']:
+                        info = analysis_result['info']
+                        
+                        # إرسال نتيجة التحليل
+                        reply_text = f"""✅ *تم استقبال الصورة بنجاح!*
+
+📊 *معلومات الصورة:*
+• الحجم: {info['size']:,} بايت
+• الأبعاد: {info['dimensions'][0]} × {info['dimensions'][1]}
+• النوع: {info['format']}
+
+🔍 *حالة التحليل:*
+{info['analysis']}
+
+🎯 *المرحلة القادمة:* تطوير خوارزمية التعرف على الألوان والزجاجات."""
+                        
+                        reply = {
+                            'chat_id': chat_id,
+                            'text': reply_text,
+                            'parse_mode': 'Markdown'
+                        }
+                        send_telegram_message('sendMessage', reply)
+                        
+                        # إرسال رسالة تشجيعية
+                        encouragement = {
+                            'chat_id': chat_id,
+                            'text': "🎉 *عمل رائع!*\n\nالبوت الآن يتعلم التعرف على الألوان في الصور. جرب إرسال صور مختلفة لمساعدته على التعلم! 🧠",
+                            'parse_mode': 'Markdown'
+                        }
+                        send_telegram_message('sendMessage', encouragement)
+                        
+                    else:
+                        # في حالة فشل التحليل
+                        reply = {
+                            'chat_id': chat_id,
+                            'text': f"❌ *حدث خطأ في تحليل الصورة*\n\nالخطأ: {analysis_result['error']}\n\nحاول بإرسال صورة أوضح.",
+                            'parse_mode': 'Markdown'
+                        }
+                        send_telegram_message('sendMessage', reply)
+                else:
+                    # في حالة فشل التحميل
+                    reply = {
+                        'chat_id': chat_id,
+                        'text': "❌ *تعذر تحميل الصورة*\n\nحاول مرة أخرى أو أرسل صورة مختلفة.",
+                        'parse_mode': 'Markdown'
+                    }
+                    send_telegram_message('sendMessage', reply)
         
         return jsonify({"status": "processed"})
         
@@ -160,25 +366,18 @@ def webhook():
         logger.error(f"❌ Error in webhook: {e}")
         return jsonify({"error": str(e)}), 500
 
-def send_telegram_message(method, data):
-    """إرسال رسالة لتلجرام"""
-    import requests
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/{method}"
-    response = requests.post(url, json=data)
-    return response.json()
-
 @app.route('/setwebhook')
 def set_webhook():
     """تعيين webhook"""
     if not TELEGRAM_TOKEN:
         return """
         <div style="text-align:center;padding:50px">
-            <h2 class="error">❌ TELEGRAM_TOKEN غير مضبوط</h2>
+            <h2 style="color:red">❌ TELEGRAM_TOKEN غير مضبوط</h2>
             <p>أضف هذا المتغير في Render Environment:</p>
             <code style="background:#f0f0f0;padding:10px;display:block;margin:10px">
                 TELEGRAM_TOKEN = توكن_البوت_الخاص_بك
             </code>
-            <p><a href="/" class="btn">العودة</a></p>
+            <p><a href="/" style="color:blue">← العودة للصفحة الرئيسية</a></p>
         </div>
         """, 400
     
@@ -189,7 +388,8 @@ def set_webhook():
         # تعيين Webhook
         response = requests.get(
             f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook",
-            params={"url": webhook_url}
+            params={"url": webhook_url},
+            timeout=10
         )
         
         result = response.json()
@@ -200,8 +400,10 @@ def set_webhook():
                 <h2 style="color:green">✅ تم تعيين Webhook بنجاح!</h2>
                 <p><strong>الرابط:</strong> {webhook_url}</p>
                 <p><strong>الحالة:</strong> {result.get('description', 'Success')}</p>
-                <p>الآن افتح البوت في تلجرام وأرسل <code>/start</code></p>
-                <p><a href="/" class="btn">🏠 الرئيسية</a></p>
+                <p>✅ البوت جاهز لاستقبال الرسائل والصور</p>
+                <div style="margin:20px">
+                    <a href="/" style="background:#4CAF50;color:white;padding:10px20px;text-decoration:none">🏠 الرئيسية</a>
+                </div>
             </div>
             """
         else:
@@ -209,35 +411,51 @@ def set_webhook():
             <div style="text-align:center;padding:50px">
                 <h2 style="color:orange">⚠️ مشكلة في تعيين Webhook</h2>
                 <p>الخطأ: {result.get('description', 'Unknown error')}</p>
-                <p><a href="/" class="btn">العودة</a></p>
+                <p><a href="/" style="color:blue">← العودة</a></p>
             </div>
             """
             
     except ImportError:
         return """
         <div style="text-align:center;padding:50px">
-            <h2 class="error">❌ مكتبة requests غير مثبتة</h2>
+            <h2 style="color:red">❌ مكتبة requests غير مثبتة</h2>
             <p>تأكد من وجودها في requirements.txt</p>
-            <p><a href="/test">اختبار المكتبات</a></p>
+            <p><a href="/test" style="color:blue">← اختبار المكتبات</a></p>
+        </div>
+        """, 500
+    except Exception as e:
+        return f"""
+        <div style="text-align:center;padding:50px">
+            <h2 style="color:red">❌ خطأ</h2>
+            <p>{str(e)}</p>
+            <p><a href="/" style="color:blue">← العودة</a></p>
         </div>
         """, 500
 
-@app.route('/send_test_message')
-def send_test_message():
-    """إرسال رسالة تجريبية"""
-    if not TELEGRAM_TOKEN:
-        return "Token not set", 400
+@app.route('/cleanup')
+def cleanup_temp():
+    """تنظيف الملفات المؤقتة"""
+    import glob
+    import time
     
-    try:
-        import requests
-        # الحصول على chat_id (يجب أن تكون قد أرسلت /start أولاً)
-        # هذا للاختبار فقط
-        return "Test endpoint - تحتاج chat_id للاختبار"
-    except:
-        return "Requests not installed", 500
+    files = glob.glob(f"{TEMP_DIR}/*")
+    deleted_count = 0
+    
+    current_time = time.time()
+    for file in files:
+        file_age = current_time - os.path.getmtime(file)
+        if file_age > 3600:  # حذف الملفات الأقدم من ساعة
+            os.remove(file)
+            deleted_count += 1
+    
+    return jsonify({
+        "deleted_files": deleted_count,
+        "remaining_files": len(glob.glob(f"{TEMP_DIR}/*"))
+    })
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    logger.info(f"🚀 Starting bot on port {port}")
-    logger.info(f"🔑 TELEGRAM_TOKEN: {'Set' if TELEGRAM_TOKEN else 'Not set'}")
+    logger.info(f"🚀 Starting Water Sort Bot on port {port}")
+    logger.info(f"🐍 Python version: {sys.version}")
+    logger.info(f"🔑 TELEGRAM_TOKEN: {'✅ Set' if TELEGRAM_TOKEN else '❌ Not set'}")
     app.run(host='0.0.0.0', port=port)

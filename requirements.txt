@@ -1,12 +1,6 @@
-# المكتبات الأساسية
+# المكتبات الأساسية فقط (بدون Pillow)
 Flask==2.3.3
 gunicorn==20.1.0
 python-telegram-bot==20.7
 python-dotenv==1.0.0
-
-# مكتبات ضرورية
 requests==2.31.0
-Pillow==10.3.0
-
-# تجنب مشاكل التوافق
-setuptools==69.5.1

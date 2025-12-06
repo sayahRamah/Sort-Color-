@@ -1,6 +1,7 @@
-from flask import Flask, request
+from flask import Flask, request, jsonify
 import logging
 import os
+import json
 
 app = Flask(__name__)
 
@@ -13,66 +14,86 @@ logger = logging.getLogger(__name__)
 
 @app.route('/')
 def index():
-    return """
-    <html>
-        <head>
-            <title>🤖 Water Sort Bot</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    text-align: center;
-                    padding: 50px;
-                    background-color: #f0f0f0;
-                }
-                .container {
-                    background: white;
-                    padding: 30px;
-                    border-radius: 10px;
-                    box-shadow: 0 0 10px rgba(0,0,0,0.1);
-                    max-width: 600px;
-                    margin: 0 auto;
-                }
-                h1 {
-                    color: #333;
-                }
-                .status {
-                    color: green;
-                    font-weight: bold;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="container">
-                <h1>🤖 بوت حل لغز فرز الألوان</h1>
-                <p class="status">✅ التطبيق يعمل بنجاح!</p>
-                <p>هذا البوت يحل لغز Water Sort Puzzle تلقائياً.</p>
-                <p>افتح تلجرام وابحث عن البوت للبدء.</p>
-                <hr>
-                <p>الإصدار: 1.0.0</p>
-                <p>المطور: Water Sort Bot Team</p>
-            </div>
-        </body>
-    </html>
-    """
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    """معالجة webhook من تلجرام"""
-    try:
-        data = request.get_json()
-        if data:
-            logger.info(f"Received update: {data}")
-            return 'OK'
-        return 'No data', 400
-    except Exception as e:
-        logger.error(f"Error in webhook: {e}")
-        return 'Error', 500
+    return jsonify({
+        "status": "running",
+        "service": "Water Sort Puzzle Bot",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "webhook": "/webhook (POST)",
+            "setwebhook": "/setwebhook"
+        }
+    })
 
 @app.route('/health')
 def health():
-    """فحص صحة التطبيق"""
-    return {'status': 'healthy', 'service': 'water-sort-bot'}
+    return jsonify({"status": "healthy"})
+
+@app.route('/webhook', methods=['POST'])
+def webhook():
+    """Webhook endpoint for Telegram"""
+    try:
+        data = request.get_json()
+        logger.info(f"Received update_id: {data.get('update_id') if data else 'No data'}")
+        
+        # رد بسيط للتأكيد
+        return jsonify({"status": "received"}), 200
+    except Exception as e:
+        logger.error(f"Webhook error: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/setwebhook', methods=['GET'])
+def set_webhook():
+    """Set webhook manually"""
+    try:
+        token = os.environ.get('TELEGRAM_TOKEN')
+        if not token:
+            return "TELEGRAM_TOKEN not set", 400
+        
+        # الحصول على رابط التطبيق
+        import requests
+        webhook_url = f"https://{request.host}/webhook"
+        
+        response = requests.post(
+            f"https://api.telegram.org/bot{token}/setWebhook",
+            json={"url": webhook_url}
+        )
+        
+        result = {
+            "webhook_url": webhook_url,
+            "telegram_response": response.json() if response.text else response.text,
+            "status_code": response.status_code
+        }
+        
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/test')
+def test():
+    """Test endpoint to verify imports"""
+    try:
+        # اختبار جميع الاستيرادات
+        import cv2
+        import numpy as np
+        from PIL import Image
+        import telegram
+        import flask
+        
+        return jsonify({
+            "status": "success",
+            "imports": {
+                "opencv": cv2.__version__,
+                "numpy": np.__version__,
+                "pillow": Image.__version__,
+                "telegram": "OK",
+                "flask": "OK"
+            }
+        }), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
+    logger.info(f"Starting server on port {port}")
     app.run(host='0.0.0.0', port=port)
